@@ -5,6 +5,72 @@ import { GateAnalysis } from "./GateAnalysis.js";
 import { TimeAnalysis } from "./TimeAnalysis.js";
 
 document.addEventListener("DOMContentLoaded", async () => {
+  const loginOverlay = document.getElementById("loginOverlay");
+  const loginButton = document.getElementById("loginSubmitButton");
+  const apiUrl = window.env.API_URL;
+
+  if (!userIsLoggedIn()) {
+    loginOverlay.style.display = "flex";
+  } else {
+    loginOverlay.style.display = "none";
+  }
+
+  loginButton.addEventListener("click", async () => {
+    const username = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
+
+    if (username === "" || password === "") {
+      // show error message
+      log("Please enter a username and password", "error");
+      return;
+    }
+
+    const res = await fetch(`${apiUrl}/api/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({
+        email: username,
+        password: password,
+      }),
+    });
+
+    if (res.status === 200) {
+      const data = await res.json();
+      if (data.user) {
+        const urlParams = new URLSearchParams(window.location.search);
+        urlParams.set("userId", data.user.id);
+        window.history.replaceState(
+          {},
+          "",
+          `${window.location.pathname}?${urlParams}`
+        );
+        loginOverlay.style.display = "none";
+      } else {
+        // show error message
+        log("Login failed", "error");
+      }
+    } else {
+      // show error message
+      log("Login failed", "error");
+    }
+
+    console.log("ressss:", res);
+  });
+
+  function userIsLoggedIn() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const id = urlParams.get("id");
+    const userId = urlParams.get("userId");
+
+    if (id && userId) {
+      return true;
+    }
+    return false;
+  }
+
   let vg = parseFloat(document.getElementById("gateV").value);
   let delay = parseFloat(document.getElementById("delay").value);
   let vgStep = parseFloat(document.getElementById("stepSize").value);
