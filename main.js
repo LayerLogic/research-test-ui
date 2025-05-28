@@ -71,7 +71,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       ?.split("; ")
       ?.find((row) => row.startsWith("ui_Auth_x="))
       ?.split("=")[1];
-    console.log("token", token);
 
     if (id && user_id && token) {
       return true;
