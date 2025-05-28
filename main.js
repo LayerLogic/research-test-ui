@@ -67,8 +67,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       ?.split("; ")
       ?.find((row) => row.startsWith("ui_user_id="))
       ?.split("=")[1];
+    const token = document.cookie
+      ?.split("; ")
+      ?.find((row) => row.startsWith("ui_Auth_x="))
+      ?.split("=")[1];
+    console.log("token", token);
 
-    if (id && user_id) {
+    if (id && user_id && token) {
       return true;
     }
     return false;
@@ -420,11 +425,11 @@ document.addEventListener("DOMContentLoaded", async () => {
           const id = urlParams.get("id");
           const userId = document.cookie
             ?.split("; ")
-            .find((row) => row.startsWith("user_id="))
+            .find((row) => row.startsWith("ui_user_id="))
             ?.split("=")[1];
           const token = document.cookie
             ?.split("; ")
-            .find((row) => row.startsWith("Auth_x="))
+            .find((row) => row.startsWith("ui_Auth_x="))
             ?.split("=")[1];
 
           if (id && userId && token) {
