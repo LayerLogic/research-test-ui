@@ -1,13 +1,20 @@
-import { log, saveGateToTxt, saveTimeToTxt, sleep } from "./utils.js";
+import {
+  log,
+  parseGateSummary,
+  parseTimeSummary,
+  saveGateToTxt,
+  saveTimeToTxt,
+  sleep,
+} from "./utils.js";
 import { gateChartConfig, timeChartConfig } from "./chartsConfig.js";
 import { SerialCommunication } from "./SerialCommunication.js";
 import { GateAnalysis } from "./GateAnalysis.js";
 import { TimeAnalysis } from "./TimeAnalysis.js";
 
 document.addEventListener("DOMContentLoaded", async () => {
+  const apiUrl = window.env.API_URL;
   const loginOverlay = document.getElementById("loginOverlay");
   const loginButton = document.getElementById("loginSubmitButton");
-  const apiUrl = window.env.API_URL;
 
   if (!userIsLoggedIn()) {
     loginOverlay.style.display = "flex";
@@ -40,13 +47,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (res.status === 200) {
       const data = await res.json();
       if (data.user) {
-        const urlParams = new URLSearchParams(window.location.search);
-        urlParams.set("userId", data.user.id);
-        window.history.replaceState(
-          {},
-          "",
-          `${window.location.pathname}?${urlParams}`
-        );
+        document.cookie = `Auth_x=${data.user.token}; path=/; max-age=3600; secure; SameSite=None`;
+        document.cookie = `user_id=${data.user.id}; path=/; max-age=3600; secure; SameSite=None`;
         loginOverlay.style.display = "none";
       } else {
         // show error message
@@ -56,16 +58,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       // show error message
       log("Login failed", "error");
     }
-
-    console.log("ressss:", res);
   });
 
   function userIsLoggedIn() {
     const urlParams = new URLSearchParams(window.location.search);
     const id = urlParams.get("id");
-    const userId = urlParams.get("userId");
+    const user_id = document.cookie
+      ?.split("; ")
+      ?.find((row) => row.startsWith("user_id="))
+      ?.split("=")[1];
 
-    if (id && userId) {
+    if (id && user_id) {
       return true;
     }
     return false;
@@ -366,11 +369,92 @@ document.addEventListener("DOMContentLoaded", async () => {
       for (const sample in gateAnalysiss) {
         const gateSummary = gateAnalysiss[sample].summary;
         saveGateToTxt(gateSummary, `sample, ${sample}_Gate_analysis`);
+        if (confirm("Do you want to save the file to the database?")) {
+          const urlParams = new URLSearchParams(window.location.search);
+          const id = urlParams.get("id");
+          const userId = document.cookie
+            ?.split("; ")
+            .find((row) => row.startsWith("user_id="))
+            ?.split("=")[1];
+          const token = document.cookie
+            ?.split("; ")
+            .find((row) => row.startsWith("Auth_x="))
+            ?.split("=")[1];
+
+          // Check if user is logged in and has a valid id and token, if not, show an error message
+          if (id && userId && token) {
+            fetch(
+              `${apiUrl}/api/researcher/trials/${id}/testsResearcherTestUi`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  channel: sample,
+                  commands: commandsTextArea.value,
+                  type: "gate",
+                  measurements: parseGateSummary(gateSummary),
+                }),
+              }
+            )
+              .then((res) => res.json())
+              .then((data) => {
+                log(data.message, "success");
+              })
+              .catch((err) => {
+                log(err.message, "error");
+              });
+          } else {
+            log("Please login to save the file", "error");
+          }
+        }
       }
     } else if (Object.keys(timeAnalysiss).length > 0) {
       for (const sample in timeAnalysiss) {
         const timeSummary = timeAnalysiss[sample].summary;
         saveTimeToTxt(timeSummary, `sample, ${sample}_Time_analysis`);
+        if (confirm("Do you want to save the file to the database?")) {
+          const urlParams = new URLSearchParams(window.location.search);
+          const id = urlParams.get("id");
+          const userId = document.cookie
+            ?.split("; ")
+            .find((row) => row.startsWith("user_id="))
+            ?.split("=")[1];
+          const token = document.cookie
+            ?.split("; ")
+            .find((row) => row.startsWith("Auth_x="))
+            ?.split("=")[1];
+
+          if (id && userId && token) {
+            fetch(
+              `${apiUrl}/api/researcher/trials/${id}/testsResearcherTestUi`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  channel: sample,
+                  commands: commandsTextArea.value,
+                  type: "time",
+                  measurements: parseTimeSummary(timeSummary),
+                }),
+              }
+            )
+              .then((res) => res.json())
+              .then((data) => {
+                log(data.message, "success");
+              })
+              .catch((err) => {
+                log(err.message, "error");
+              });
+          } else {
+            log("Please login to save the file", "error");
+          }
+        }
       }
     }
   }
