@@ -47,8 +47,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (res.status === 200) {
       const data = await res.json();
       if (data.user) {
-        document.cookie = `Auth_x=${data.user.token}; path=/; max-age=3600; secure; SameSite=None`;
-        document.cookie = `user_id=${data.user.id}; path=/; max-age=3600; secure; SameSite=None`;
+        document.cookie = `ui_Auth_x=${data.user.token}; path=/; max-age=3600; secure; SameSite=None`;
+        document.cookie = `ui_user_id=${data.user.id}; path=/; max-age=3600; secure; SameSite=None`;
         loginOverlay.style.display = "none";
       } else {
         // show error message
@@ -65,7 +65,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const id = urlParams.get("id");
     const user_id = document.cookie
       ?.split("; ")
-      ?.find((row) => row.startsWith("user_id="))
+      ?.find((row) => row.startsWith("ui_user_id="))
       ?.split("=")[1];
 
     if (id && user_id) {
@@ -374,11 +374,11 @@ document.addEventListener("DOMContentLoaded", async () => {
           const id = urlParams.get("id");
           const userId = document.cookie
             ?.split("; ")
-            .find((row) => row.startsWith("user_id="))
+            .find((row) => row.startsWith("ui_user_id="))
             ?.split("=")[1];
           const token = document.cookie
             ?.split("; ")
-            .find((row) => row.startsWith("Auth_x="))
+            .find((row) => row.startsWith("ui_Auth_x="))
             ?.split("=")[1];
 
           // Check if user is logged in and has a valid id and token, if not, show an error message
