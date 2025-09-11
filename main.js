@@ -47,8 +47,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (res.status === 200) {
       const data = await res.json();
       if (data.user) {
-        document.cookie = `ui_Auth_x=${data.user.token}; path=/; max-age=3600; secure; SameSite=None`;
-        document.cookie = `ui_user_id=${data.user.id}; path=/; max-age=3600; secure; SameSite=None`;
+        document.cookie = `ui_Auth_x=${data.user.token}; path=/; max-age=86400; secure; SameSite=None`;
+        document.cookie = `ui_user_id=${data.user.id}; path=/; max-age=86400; secure; SameSite=None`;
         loginOverlay.style.display = "none";
       } else {
         // show error message
