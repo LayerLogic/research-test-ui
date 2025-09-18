@@ -106,7 +106,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const gateVInput = document.getElementById("gateV");
   const delayInput = document.getElementById("delay");
   const channels = document.getElementById("channels").children;
-  const notes = document.getElementById("testNotes").value.trim();
 
   let isRunning = false;
   const gateAnalysiss = {};
@@ -370,6 +369,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function save() {
+    const notes = document.getElementById("testNotes").value.trim();
     if (Object.keys(gateAnalysiss).length > 0) {
       for (const sample in gateAnalysiss) {
         const gateSummary = gateAnalysiss[sample].summary;
@@ -402,6 +402,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                   type: "gate",
                   measurements: parseGateSummary(gateSummary),
                   notes,
+                  settings: { vgMin, vgMax, gateStep: vgStep },
                 }),
               }
             )
@@ -448,6 +449,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                   type: "time",
                   measurements: parseTimeSummary(timeSummary),
                   notes,
+                  settings: { gateV: vg, delay },
                 }),
               }
             )
