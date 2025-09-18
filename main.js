@@ -106,6 +106,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const gateVInput = document.getElementById("gateV");
   const delayInput = document.getElementById("delay");
   const channels = document.getElementById("channels").children;
+  const notes = document.getElementById("testNotes").value.trim();
 
   let isRunning = false;
   const gateAnalysiss = {};
@@ -400,6 +401,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                   commands: commandsTextArea.value,
                   type: "gate",
                   measurements: parseGateSummary(gateSummary),
+                  notes,
                 }),
               }
             )
@@ -445,6 +447,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                   commands: commandsTextArea.value,
                   type: "time",
                   measurements: parseTimeSummary(timeSummary),
+                  notes,
                 }),
               }
             )
