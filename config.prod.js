@@ -1,3 +1,3 @@
 window.env = {
-  API_URL: "https://oyster-app-r3j2f.ondigitalocean.app",
+  API_URL: "https://research-api.layerlogic.se",
 };
