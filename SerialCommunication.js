@@ -6,8 +6,9 @@ export class SerialCommunication {
     this.reader = null;
     this.writer = null;
     this.isConnected = false;
+    this.readableStreamClosed = null;
     this.autoConnect = JSON.parse(
-      localStorage.getItem("autoConnect") || "false"
+      localStorage.getItem("autoConnect") || "false",
     );
   }
 
@@ -37,18 +38,43 @@ export class SerialCommunication {
         await this.port.open({ baudRate: 115200 });
 
         const textDecoder = new TextDecoderStream();
-        this.port.readable.pipeTo(textDecoder.writable);
+        // Store the promise so we can properly handle stream closure
+        this.readableStreamClosed = this.port.readable
+          .pipeTo(textDecoder.writable)
+          .catch((error) => {
+            // Don't log if it's an expected close
+            if (error.name !== "AbortError") {
+              log(`Stream pipe error: ${error}`, "error");
+            }
+          });
         this.reader = textDecoder.readable.getReader();
         this.writer = this.port.writable.getWriter();
 
-        const res = await this.read();
-        log(res, "success");
+        // Use timeout for initial read to prevent hanging
+        // Some devices might not send data immediately
+        try {
+          const res = await this.read(5000); // 5 second timeout
+          if (res) {
+            log(res, "success");
+          } else {
+            log("Connected (no initial response from device)", "info");
+          }
+        } catch (readError) {
+          // Connection is still valid even if initial read times out
+          log(
+            "Connected (device handshake timeout - this may be normal)",
+            "info",
+          );
+        }
+
         this.isConnected = true;
         return true;
       }
       return true;
     } catch (error) {
       log(`Error connecting: ${error}`, "error");
+      // Cleanup on failure
+      await this.cleanup();
       if (manualConnect) {
         // Reset state if manual connection fails
         localStorage.removeItem("autoConnect");
@@ -59,11 +85,50 @@ export class SerialCommunication {
     }
   }
 
-  async read() {
+  // Helper to create a timeout promise
+  withTimeout(promise, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        reject(new Error(`Operation timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      promise
+        .then((result) => {
+          clearTimeout(timeoutId);
+          resolve(result);
+        })
+        .catch((error) => {
+          clearTimeout(timeoutId);
+          reject(error);
+        });
+    });
+  }
+
+  async read(timeoutMs = null) {
     let receivedBuffer = "";
     try {
-      while (true) {
+      // If no reader available, return null
+      if (!this.reader) {
+        return null;
+      }
+
+      const readOnce = async () => {
         const { value, done } = await this.reader.read();
+        if (done) {
+          return { value: null, done: true };
+        }
+        return { value, done: false };
+      };
+
+      while (true) {
+        let result;
+        if (timeoutMs) {
+          result = await this.withTimeout(readOnce(), timeoutMs);
+        } else {
+          result = await readOnce();
+        }
+
+        const { value, done } = result;
         if (done) {
           return null;
         }
@@ -80,8 +145,54 @@ export class SerialCommunication {
         }
       }
     } catch (error) {
+      if (error.message && error.message.includes("timed out")) {
+        // Timeout is not a fatal error, just return null
+        return null;
+      }
       log(`Read error: ${error}`, "error");
       this.isConnected = false;
+      return null;
+    }
+  }
+
+  // Helper method to cleanup resources
+  async cleanup() {
+    try {
+      if (this.reader) {
+        await this.reader.cancel().catch(() => {});
+        this.reader.releaseLock();
+        this.reader = null;
+      }
+    } catch (e) {
+      /* ignore cleanup errors */
+    }
+
+    try {
+      if (this.writer) {
+        await this.writer.close().catch(() => {});
+        this.writer.releaseLock();
+        this.writer = null;
+      }
+    } catch (e) {
+      /* ignore cleanup errors */
+    }
+
+    try {
+      if (this.readableStreamClosed) {
+        await this.readableStreamClosed.catch(() => {});
+        this.readableStreamClosed = null;
+      }
+    } catch (e) {
+      /* ignore cleanup errors */
+    }
+
+    try {
+      if (this.port) {
+        await this.port.close().catch(() => {});
+        this.port = null;
+      }
+    } catch (e) {
+      /* ignore cleanup errors */
     }
   }
 
@@ -102,18 +213,7 @@ export class SerialCommunication {
   }
 
   async disconnect() {
-    if (this.reader) {
-      this.reader.releaseLock();
-      this.reader = null;
-    }
-    if (this.writer) {
-      this.writer.releaseLock();
-      this.writer = null;
-    }
-    if (this.port) {
-      await this.port.close();
-      this.port = null;
-    }
+    await this.cleanup();
     this.isConnected = false;
     localStorage.removeItem("autoConnect");
     this.autoConnect = false;
