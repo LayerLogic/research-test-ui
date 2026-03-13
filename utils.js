@@ -161,3 +161,41 @@ export const parseResponse = (response) => {
     frequency,
   };
 };
+
+export const parseGateSummary = (summary) => {
+  if (!summary.length > 0) {
+    log("No response recieved.", "warning");
+    return;
+  }
+  const parsedSummary = summary.map((item) => {
+    const { Vg, X, Y, I, F } = item;
+    return {
+      gateV: Vg,
+      voltageX: X,
+      voltageY: Y,
+      current: I,
+      frequency: F,
+    };
+  });
+
+  return parsedSummary;
+};
+
+export const parseTimeSummary = (summary) => {
+  if (!summary.length > 0) {
+    log("No response recieved.", "warning");
+    return;
+  }
+  const parsedSummary = summary.map((item) => {
+    const { t, X, Y, I, F } = item;
+    return {
+      time: t,
+      voltageX: X,
+      voltageY: Y,
+      current: I,
+      frequency: F,
+    };
+  });
+
+  return parsedSummary;
+};

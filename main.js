@@ -1,10 +1,83 @@
-import { log, saveGateToTxt, saveTimeToTxt, sleep } from "./utils.js";
+import {
+  log,
+  parseGateSummary,
+  parseTimeSummary,
+  saveGateToTxt,
+  saveTimeToTxt,
+  sleep,
+} from "./utils.js";
 import { gateChartConfig, timeChartConfig } from "./chartsConfig.js";
 import { SerialCommunication } from "./SerialCommunication.js";
 import { GateAnalysis } from "./GateAnalysis.js";
 import { TimeAnalysis } from "./TimeAnalysis.js";
 
 document.addEventListener("DOMContentLoaded", async () => {
+  const apiUrl = window.env.API_URL;
+  const loginOverlay = document.getElementById("loginOverlay");
+  const loginButton = document.getElementById("loginSubmitButton");
+
+  if (!userIsLoggedIn()) {
+    loginOverlay.style.display = "flex";
+  } else {
+    loginOverlay.style.display = "none";
+  }
+
+  loginButton.addEventListener("click", async () => {
+    const username = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
+
+    if (username === "" || password === "") {
+      // show error message
+      log("Please enter a username and password", "error");
+      return;
+    }
+
+    const res = await fetch(`${apiUrl}/api/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({
+        email: username,
+        password: password,
+      }),
+    });
+
+    if (res.status === 200) {
+      const data = await res.json();
+      if (data.user) {
+        document.cookie = `ui_Auth_x=${data.user.token}; path=/; max-age=43200; secure; SameSite=None`;
+        document.cookie = `ui_user_id=${data.user.id}; path=/; max-age=43200; secure; SameSite=None`;
+        loginOverlay.style.display = "none";
+      } else {
+        // show error message
+        log("Login failed", "error");
+      }
+    } else {
+      // show error message
+      log("Login failed", "error");
+    }
+  });
+
+  function userIsLoggedIn() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const id = urlParams.get("id");
+    const user_id = document.cookie
+      ?.split("; ")
+      ?.find((row) => row.startsWith("ui_user_id="))
+      ?.split("=")[1];
+    const token = document.cookie
+      ?.split("; ")
+      ?.find((row) => row.startsWith("ui_Auth_x="))
+      ?.split("=")[1];
+
+    if (id && user_id && token) {
+      return true;
+    }
+    return false;
+  }
+
   let vg = parseFloat(document.getElementById("gateV").value);
   let delay = parseFloat(document.getElementById("delay").value);
   let vgStep = parseFloat(document.getElementById("stepSize").value);
@@ -296,15 +369,101 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function save() {
+    const notes = document.getElementById("testNotes").value.trim();
     if (Object.keys(gateAnalysiss).length > 0) {
       for (const sample in gateAnalysiss) {
         const gateSummary = gateAnalysiss[sample].summary;
         saveGateToTxt(gateSummary, `sample, ${sample}_Gate_analysis`);
+        if (confirm("Do you want to save the file to the database?")) {
+          const urlParams = new URLSearchParams(window.location.search);
+          const id = urlParams.get("id");
+          const userId = document.cookie
+            ?.split("; ")
+            .find((row) => row.startsWith("ui_user_id="))
+            ?.split("=")[1];
+          const token = document.cookie
+            ?.split("; ")
+            .find((row) => row.startsWith("ui_Auth_x="))
+            ?.split("=")[1];
+
+          // Check if user is logged in and has a valid id and token, if not, show an error message
+          if (id && userId && token) {
+            fetch(
+              `${apiUrl}/api/researcher/trials/${id}/testsResearcherTestUi`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  channel: sample,
+                  commands: commandsTextArea.value,
+                  type: "gate",
+                  measurements: parseGateSummary(gateSummary),
+                  notes,
+                  settings: { vgMin, vgMax, gateStep: vgStep },
+                }),
+              }
+            )
+              .then((res) => res.json())
+              .then((data) => {
+                log(data.message, "success");
+              })
+              .catch((err) => {
+                log(err.message, "error");
+              });
+          } else {
+            log("Please login to save the file", "error");
+          }
+        }
       }
     } else if (Object.keys(timeAnalysiss).length > 0) {
       for (const sample in timeAnalysiss) {
         const timeSummary = timeAnalysiss[sample].summary;
         saveTimeToTxt(timeSummary, `sample, ${sample}_Time_analysis`);
+        if (confirm("Do you want to save the file to the database?")) {
+          const urlParams = new URLSearchParams(window.location.search);
+          const id = urlParams.get("id");
+          const userId = document.cookie
+            ?.split("; ")
+            .find((row) => row.startsWith("ui_user_id="))
+            ?.split("=")[1];
+          const token = document.cookie
+            ?.split("; ")
+            .find((row) => row.startsWith("ui_Auth_x="))
+            ?.split("=")[1];
+
+          if (id && userId && token) {
+            fetch(
+              `${apiUrl}/api/researcher/trials/${id}/testsResearcherTestUi`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  channel: sample,
+                  commands: commandsTextArea.value,
+                  type: "time",
+                  measurements: parseTimeSummary(timeSummary),
+                  notes,
+                  settings: { gateV: vg, delay },
+                }),
+              }
+            )
+              .then((res) => res.json())
+              .then((data) => {
+                log(data.message, "success");
+              })
+              .catch((err) => {
+                log(err.message, "error");
+              });
+          } else {
+            log("Please login to save the file", "error");
+          }
+        }
       }
     }
   }
