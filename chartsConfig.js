@@ -1,3 +1,10 @@
+const hiddenLabelScale = {
+  ticks: {},
+  title: {
+    display: false,
+  },
+};
+
 export const gateChartConfig = (sample) => ({
   type: "line",
   data: {
@@ -45,8 +52,11 @@ export const gateChartConfig = (sample) => ({
       tooltip: {
         usePointStyle: true,
       },
+      legend: {
+        display: false,
+      },
       title: {
-        display: true,
+        display: false,
         text: `Channel: ${sample}`,
         font: {
           size: 16,
@@ -57,29 +67,15 @@ export const gateChartConfig = (sample) => ({
     scales: {
       x: {
         type: "linear",
-        title: {
-          display: true,
-          text: "Vg",
-          font: {
-            size: 14,
-            weight: "bold",
-          },
-        },
         stacked: true,
+        ...hiddenLabelScale,
       },
       y: {
         type: "linear",
         display: true,
         position: "left",
         stacked: true,
-        title: {
-          display: true,
-          text: "R (kΩ)",
-          font: {
-            size: 14,
-            weight: "bold",
-          },
-        },
+        ...hiddenLabelScale,
         grid: {
           drawOnChartArea: false,
         },
@@ -89,14 +85,7 @@ export const gateChartConfig = (sample) => ({
         display: true,
         position: "right",
         stacked: true,
-        title: {
-          display: true,
-          text: "R (kΩ)",
-          font: {
-            size: 14,
-            weight: "bold",
-          },
-        },
+        ...hiddenLabelScale,
         grid: {
           drawOnChartArea: false,
         },
@@ -152,8 +141,11 @@ export const timeChartConfig = (sample) => ({
       tooltip: {
         usePointStyle: true,
       },
+      legend: {
+        display: false,
+      },
       title: {
-        display: true,
+        display: false,
         text: `Channel: ${sample}`,
         font: {
           size: 16,
@@ -164,27 +156,13 @@ export const timeChartConfig = (sample) => ({
     scales: {
       x: {
         type: "linear",
-        title: {
-          display: true,
-          text: "Time",
-          font: {
-            size: 14,
-            weight: "bold",
-          },
-        },
+        ...hiddenLabelScale,
       },
       y: {
         type: "linear",
         display: true,
         position: "left",
-        title: {
-          display: true,
-          text: "R (kΩ)",
-          font: {
-            size: 14,
-            weight: "bold",
-          },
-        },
+        ...hiddenLabelScale,
         grid: {
           drawOnChartArea: false,
         },
@@ -194,14 +172,7 @@ export const timeChartConfig = (sample) => ({
         display: true,
         position: "right",
         stacked: true,
-        title: {
-          display: true,
-          text: "R (kΩ)",
-          font: {
-            size: 14,
-            weight: "bold",
-          },
-        },
+        ...hiddenLabelScale,
         grid: {
           drawOnChartArea: false,
         },
