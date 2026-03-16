@@ -1,3 +1,3 @@
 window.env = {
-  API_URL: "https://research-api.layerlogic.se",
+  API_URL: "http://localhost:5073",
 };

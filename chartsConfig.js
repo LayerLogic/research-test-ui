@@ -1,10 +1,3 @@
-const hiddenLabelScale = {
-  ticks: {},
-  title: {
-    display: false,
-  },
-};
-
 export const gateChartConfig = (sample) => ({
   type: "line",
   data: {
@@ -52,11 +45,8 @@ export const gateChartConfig = (sample) => ({
       tooltip: {
         usePointStyle: true,
       },
-      legend: {
-        display: false,
-      },
       title: {
-        display: false,
+        display: true,
         text: `Channel: ${sample}`,
         font: {
           size: 16,
@@ -68,14 +58,12 @@ export const gateChartConfig = (sample) => ({
       x: {
         type: "linear",
         stacked: true,
-        ...hiddenLabelScale,
       },
       y: {
         type: "linear",
         display: true,
         position: "left",
         stacked: true,
-        ...hiddenLabelScale,
         grid: {
           drawOnChartArea: false,
         },
@@ -85,7 +73,6 @@ export const gateChartConfig = (sample) => ({
         display: true,
         position: "right",
         stacked: true,
-        ...hiddenLabelScale,
         grid: {
           drawOnChartArea: false,
         },
@@ -141,11 +128,8 @@ export const timeChartConfig = (sample) => ({
       tooltip: {
         usePointStyle: true,
       },
-      legend: {
-        display: false,
-      },
       title: {
-        display: false,
+        display: true,
         text: `Channel: ${sample}`,
         font: {
           size: 16,
@@ -156,13 +140,11 @@ export const timeChartConfig = (sample) => ({
     scales: {
       x: {
         type: "linear",
-        ...hiddenLabelScale,
       },
       y: {
         type: "linear",
         display: true,
         position: "left",
-        ...hiddenLabelScale,
         grid: {
           drawOnChartArea: false,
         },
@@ -172,7 +154,6 @@ export const timeChartConfig = (sample) => ({
         display: true,
         position: "right",
         stacked: true,
-        ...hiddenLabelScale,
         grid: {
           drawOnChartArea: false,
         },

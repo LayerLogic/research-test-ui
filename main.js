@@ -1,4 +1,5 @@
 import {
+  generateAnalysisRunId,
   log,
   parseGateSummary,
   parseTimeSummary,
@@ -27,7 +28,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     const password = document.getElementById("password").value;
 
     if (username === "" || password === "") {
-      // show error message
       log("Please enter a username and password", "error");
       return;
     }
@@ -40,7 +40,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       credentials: "include",
       body: JSON.stringify({
         email: username,
-        password: password,
+        password,
       }),
     });
 
@@ -51,11 +51,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         document.cookie = `ui_user_id=${data.user.id}; path=/; max-age=43200; secure; SameSite=None`;
         loginOverlay.style.display = "none";
       } else {
-        // show error message
         log("Login failed", "error");
       }
     } else {
-      // show error message
       log("Login failed", "error");
     }
   });
@@ -63,7 +61,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function userIsLoggedIn() {
     const urlParams = new URLSearchParams(window.location.search);
     const id = urlParams.get("id");
-    const user_id = document.cookie
+    const userId = document.cookie
       ?.split("; ")
       ?.find((row) => row.startsWith("ui_user_id="))
       ?.split("=")[1];
@@ -72,10 +70,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       ?.find((row) => row.startsWith("ui_Auth_x="))
       ?.split("=")[1];
 
-    if (id && user_id && token) {
-      return true;
-    }
-    return false;
+    return Boolean(id && userId && token);
   }
 
   let vg = parseFloat(document.getElementById("gateV").value);
@@ -83,17 +78,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   let vgStep = parseFloat(document.getElementById("stepSize").value);
   let vgMin = parseFloat(document.getElementById("vgMin").value);
   let vgMax = parseFloat(document.getElementById("vgMax").value);
-  const channelsArr = [];
+  let currentAnalysisType = null;
 
+  const channelsArr = [];
   const serialComm = new SerialCommunication();
+
   const connectButton = document.getElementById("connectButton");
   const resetZoomButton = document.getElementById("resetZoomButton");
   const stopButton = document.getElementById("stopButton");
   const startGateAnalysisButton = document.getElementById(
-    "startGateAnalysisButton"
+    "startGateAnalysisButton",
   );
   const startTimeAnalysisButton = document.getElementById(
-    "startTimeAnalysisButton"
+    "startTimeAnalysisButton",
   );
   const sendCommandsButton = document.getElementById("sendCommandsButton");
   const saveDataButton = document.getElementById("saveDataButton");
@@ -105,11 +102,233 @@ document.addEventListener("DOMContentLoaded", async () => {
   const vgMaxInput = document.getElementById("vgMax");
   const gateVInput = document.getElementById("gateV");
   const delayInput = document.getElementById("delay");
+  const markStableButton = document.getElementById("markStableButton");
+  const stableStatus = document.getElementById("stableStatus");
   const channels = document.getElementById("channels").children;
 
   let isRunning = false;
   const gateAnalysiss = {};
   const timeAnalysiss = {};
+
+  const getTimeAnalyses = () => Object.entries(timeAnalysiss);
+
+  const getSaveContext = () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return {
+      trialId: urlParams.get("id"),
+      userId: document.cookie
+        ?.split("; ")
+        ?.find((row) => row.startsWith("ui_user_id="))
+        ?.split("=")[1],
+      token: document.cookie
+        ?.split("; ")
+        ?.find((row) => row.startsWith("ui_Auth_x="))
+        ?.split("=")[1],
+    };
+  };
+
+  const syncStableCaptureControls = () => {
+    if (!markStableButton) {
+      return;
+    }
+
+    const hasTimeAnalysis = getTimeAnalyses().length > 0;
+    const canCapture =
+      isRunning && currentAnalysisType === "time" && hasTimeAnalysis;
+    markStableButton.disabled = !canCapture;
+  };
+
+  const renderStableSummary = () => {
+    if (!stableStatus) {
+      return;
+    }
+
+    const capturedBaselines = getTimeAnalyses()
+      .map(([sample, analysis]) => ({ sample, baseline: analysis.baseline }))
+      .filter(({ baseline }) => baseline?.stableAtSeconds !== null);
+
+    if (!capturedBaselines.length) {
+      stableStatus.innerHTML = "<p>No stable point captured yet.</p>";
+      return;
+    }
+
+    const rows = capturedBaselines
+      .sort((left, right) => Number(left.sample) - Number(right.sample))
+      .map(({ sample, baseline }) => {
+        const stableAt = Number(baseline.stableAtSeconds).toLocaleString(
+          undefined,
+          {
+            maximumFractionDigits: 2,
+          },
+        );
+        const x0 = Number(baseline.x0).toLocaleString(undefined, {
+          maximumFractionDigits: 8,
+        });
+        const y0 = Number(baseline.y0).toLocaleString(undefined, {
+          maximumFractionDigits: 8,
+        });
+
+        return `
+          <div class="stable-status-row">
+            <strong>Ch ${sample}</strong>
+            <span>t = ${stableAt} s</span>
+            <span>X0 = ${x0}</span>
+            <span>Y0 = ${y0}</span>
+          </div>
+        `;
+      })
+      .join("");
+
+    stableStatus.innerHTML = `
+      <p><strong>Stable point captured</strong></p>
+      ${rows}
+    `;
+  };
+
+  const captureStableBaselines = () => {
+    if (!isRunning || currentAnalysisType !== "time") {
+      log(
+        "Stable capture is only available while a time analysis is running",
+        "warning",
+      );
+      return;
+    }
+
+    const analyses = getTimeAnalyses();
+    if (!analyses.length) {
+      log("No active time analyses found", "warning");
+      return;
+    }
+
+    const referenceTimestamp = Date.now();
+    let capturedCount = 0;
+
+    for (const [sample, analysis] of analyses) {
+      try {
+        analysis.captureBaseline(referenceTimestamp);
+        capturedCount += 1;
+      } catch (error) {
+        log(`Channel ${sample}: ${error.message}`, "warning");
+      }
+    }
+
+    renderStableSummary();
+
+    if (capturedCount > 0) {
+      log(
+        `Captured stable baseline for ${capturedCount} channel(s)`,
+        "success",
+      );
+    }
+  };
+
+  const postTestToDatabase = async (trialId, token, payload) => {
+    const response = await fetch(
+      `${apiUrl}/api/researcher/trials/${trialId}/testsResearcherTestUi`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data.error || data.message || "Failed to save test");
+    }
+
+    return data;
+  };
+
+  const saveGateAnalyses = async (notes, shouldSaveToDatabase, saveContext) => {
+    for (const sample in gateAnalysiss) {
+      const gateSummary = gateAnalysiss[sample].summary;
+      saveGateToTxt(gateSummary, `sample, ${sample}_Gate_analysis`);
+
+      if (!shouldSaveToDatabase) {
+        continue;
+      }
+
+      const payload = {
+        channel: sample,
+        commands: commandsTextArea.value,
+        type: "gate",
+        measurements: parseGateSummary(gateSummary),
+        notes,
+        settings: { vgMin, vgMax, gateStep: vgStep },
+      };
+
+      try {
+        const data = await postTestToDatabase(
+          saveContext.trialId,
+          saveContext.token,
+          payload,
+        );
+        log(
+          data.message || `Saved gate analysis for channel ${sample}`,
+          "success",
+        );
+      } catch (error) {
+        log(`Channel ${sample}: ${error.message}`, "error");
+      }
+    }
+  };
+
+  const saveTimeAnalyses = async (notes, shouldSaveToDatabase, saveContext) => {
+    const analysisRunId = generateAnalysisRunId();
+
+    for (const sample in timeAnalysiss) {
+      const analysis = timeAnalysiss[sample];
+      const timeSummary = analysis.summary;
+      const baseline = analysis.baseline || {
+        stableAtSeconds: null,
+        windowPoints: 5,
+        x0: 1,
+        y0: 1,
+      };
+
+      saveTimeToTxt(timeSummary, `sample, ${sample}_Time_analysis`, {
+        analysisRunId,
+        baseline,
+      });
+
+      if (!shouldSaveToDatabase) {
+        continue;
+      }
+
+      const payload = {
+        channel: sample,
+        commands: commandsTextArea.value,
+        type: "time",
+        measurements: parseTimeSummary(timeSummary),
+        notes,
+        settings: { gateV: vg, delay },
+        analysisRunId,
+        baseline: {
+          stableAtSeconds: baseline.stableAtSeconds,
+          windowPoints: baseline.windowPoints,
+        },
+      };
+
+      try {
+        const data = await postTestToDatabase(
+          saveContext.trialId,
+          saveContext.token,
+          payload,
+        );
+        log(
+          data.message || `Saved time analysis for channel ${sample}`,
+          "success",
+        );
+      } catch (error) {
+        log(`Channel ${sample}: ${error.message}`, "error");
+      }
+    }
+  };
 
   // Try to auto-connect if previously connected
   if (serialComm.autoConnect) {
@@ -120,15 +339,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     } else {
       log(
         "Could not automatically reconnect. Please connect manually.",
-        "warning"
+        "warning",
       );
     }
   }
 
   /**** EVENT LISTENERS ****/
-  // Connect to Arduino
   connectButton.addEventListener("click", () => serialComm.connect(true));
-  // disable the connect button if the connection is successful
+
   if (serialComm.isConnected) {
     connectButton.disabled = true;
     connectButton.innerText = "Connected";
@@ -137,27 +355,24 @@ document.addEventListener("DOMContentLoaded", async () => {
     connectButton.innerText = "Connect";
   }
 
-  // Reset zoom for all charts
   resetZoomButton.addEventListener("click", () => {
     if (Object.keys(gateAnalysiss).length > 0) {
       for (const sample in gateAnalysiss) {
-        const gateChart = gateAnalysiss[sample].chart;
-        gateChart.resetZoom();
+        gateAnalysiss[sample].chart.resetZoom();
       }
     } else if (Object.keys(timeAnalysiss).length > 0) {
       for (const sample in timeAnalysiss) {
-        const timeChart = timeAnalysiss[sample].chart;
-        timeChart.resetZoom();
+        timeAnalysiss[sample].chart.resetZoom();
       }
     }
   });
 
-  // Stop all analyses
   stopButton.addEventListener("click", () => {
     isRunning = false;
+    currentAnalysisType = null;
+    syncStableCaptureControls();
   });
 
-  // Toggle grid change the       grid-template-columns: 1fr; to grid-template-columns: 1fr 1fr;
   toggleGridButton.addEventListener("click", () => {
     const container = document.getElementById("chart-container");
     if (container.style.gridTemplateColumns === "1fr") {
@@ -169,7 +384,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // Start Gate analyses
   startGateAnalysisButton.addEventListener("click", async () => {
     if (!serialComm.isConnected) {
       const connected = await serialComm.connect(false);
@@ -178,10 +392,16 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
     }
+
     if (channelsArr.length === 0) {
       log("Please select at least one channel", "error");
       return;
     }
+
+    currentAnalysisType = "gate";
+    renderStableSummary();
+    syncStableCaptureControls();
+
     for (const sample of channelsArr) {
       const canvas = document.createElement("canvas");
       canvas.id = sample;
@@ -197,7 +417,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         gateChart,
         vgStep,
         vgMin,
-        vgMax
+        vgMax,
       );
     }
 
@@ -206,12 +426,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     let index = 0;
     isRunning = true;
+    syncStableCaptureControls();
+
     while (isRunning) {
-      let currentIdx = index % channelsArr.length;
-      let channelName = channelsArr[currentIdx];
+      const currentIdx = index % channelsArr.length;
+      const channelName = channelsArr[currentIdx];
       const gateAnalysis = gateAnalysiss[channelName];
       await gateAnalysis.run();
-      index++;
+      index += 1;
     }
   });
 
@@ -223,10 +445,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
     }
+
     if (channelsArr.length === 0) {
       log("Please select at least one channel", "error");
       return;
     }
+
+    currentAnalysisType = "time";
+    renderStableSummary();
 
     for (const sample of channelsArr) {
       const canvas = document.createElement("canvas");
@@ -241,7 +467,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         sample,
         timeChart,
         vg,
-        delay
+        delay,
       );
     }
 
@@ -249,18 +475,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     startTimeAnalysisButton.disabled = true;
 
     let index = 0;
-    isRunning = true;
     let setup = false;
+    isRunning = true;
+    syncStableCaptureControls();
+
     while (isRunning) {
-      let currentIdx = index % channelsArr.length;
-      let channelName = channelsArr[currentIdx];
+      const currentIdx = index % channelsArr.length;
+      const channelName = channelsArr[currentIdx];
       const timeAnalysis = timeAnalysiss[channelName];
       if (!setup) {
         await timeAnalysis.setup();
         setup = true;
       }
       await timeAnalysis.run();
-      index++;
+      index += 1;
     }
   });
 
@@ -279,64 +507,42 @@ document.addEventListener("DOMContentLoaded", async () => {
       log(req, "info");
       const res = await serialComm.read();
       log(res, "info");
-
-      /* Wait for 500ms before sending the next command
-       * This is to avoid overwhelming the serial buffer
-       * and to ensure that the Arduino has time to process the command
-       * and send a response back */
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
   });
 
-  // Input handlers
   stepSizeInput.addEventListener("input", async (e) => {
     vgStep = Math.abs(parseFloat(e.target.value)) || 0.03;
     await sleep(500);
     for (const sample in gateAnalysiss) {
-      const gateAnalysis = gateAnalysiss[sample];
-      gateAnalysis.vg_step = vgStep;
+      gateAnalysiss[sample].vg_step = vgStep;
     }
     log(`Step size set to ${vgStep}`, "info");
   });
 
   vgMinInput.addEventListener("input", async (e) => {
-    if (e.target.value === "") {
-      vgMin = -0.5;
-    } else {
-      vgMin = parseFloat(e.target.value);
-    }
+    vgMin = e.target.value === "" ? -0.5 : parseFloat(e.target.value);
     await sleep(500);
     for (const sample in gateAnalysiss) {
-      const gateAnalysis = gateAnalysiss[sample];
-      gateAnalysis.vg_min = vgMin;
+      gateAnalysiss[sample].vg_min = vgMin;
     }
     log(`Vg min set to ${vgMin}`, "info");
   });
 
   vgMaxInput.addEventListener("input", async (e) => {
-    if (e.target.value === "") {
-      vgMax = 0.5;
-    } else {
-      vgMax = parseFloat(e.target.value);
-    }
+    vgMax = e.target.value === "" ? 0.5 : parseFloat(e.target.value);
     await sleep(500);
     for (const sample in gateAnalysiss) {
-      const gateAnalysis = gateAnalysiss[sample];
-      gateAnalysis.vg_max = vgMax;
+      gateAnalysiss[sample].vg_max = vgMax;
     }
     log(`Vg max set to ${vgMax}`, "info");
   });
 
   gateVInput.addEventListener("input", async (e) => {
-    if (e.target.value === "") {
-      vg = 1;
-    } else {
-      vg = parseFloat(e.target.value);
-    }
+    vg = e.target.value === "" ? 1 : parseFloat(e.target.value);
     await sleep(500);
     for (const sample in timeAnalysiss) {
-      const timeAnalysis = timeAnalysiss[sample];
-      timeAnalysis.vg = vg;
+      timeAnalysiss[sample].vg = vg;
     }
     log(`Vg set to ${vg}`, "info");
   });
@@ -345,16 +551,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     delay = parseFloat(e.target.value);
     await sleep(500);
     for (const sample in timeAnalysiss) {
-      const timeAnalysis = timeAnalysiss[sample];
-      timeAnalysis.delay = delay;
+      timeAnalysiss[sample].delay = delay;
     }
     log(`Delay set to ${delay}`, "info");
   });
 
-  // Channel selection
   for (const channel of channels) {
     channel.addEventListener("click", () => toggleChannel(channel));
   }
+
+  markStableButton.addEventListener("click", captureStableBaselines);
 
   function toggleChannel(channel) {
     const channelId = channel.id;
@@ -368,113 +574,46 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  function save() {
+  async function save() {
     const notes = document.getElementById("testNotes").value.trim();
-    if (Object.keys(gateAnalysiss).length > 0) {
-      for (const sample in gateAnalysiss) {
-        const gateSummary = gateAnalysiss[sample].summary;
-        saveGateToTxt(gateSummary, `sample, ${sample}_Gate_analysis`);
-        if (confirm("Do you want to save the file to the database?")) {
-          const urlParams = new URLSearchParams(window.location.search);
-          const id = urlParams.get("id");
-          const userId = document.cookie
-            ?.split("; ")
-            .find((row) => row.startsWith("ui_user_id="))
-            ?.split("=")[1];
-          const token = document.cookie
-            ?.split("; ")
-            .find((row) => row.startsWith("ui_Auth_x="))
-            ?.split("=")[1];
+    const hasGateAnalyses = Object.keys(gateAnalysiss).length > 0;
+    const hasTimeAnalyses = Object.keys(timeAnalysiss).length > 0;
 
-          // Check if user is logged in and has a valid id and token, if not, show an error message
-          if (id && userId && token) {
-            fetch(
-              `${apiUrl}/api/researcher/trials/${id}/testsResearcherTestUi`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                  channel: sample,
-                  commands: commandsTextArea.value,
-                  type: "gate",
-                  measurements: parseGateSummary(gateSummary),
-                  notes,
-                  settings: { vgMin, vgMax, gateStep: vgStep },
-                }),
-              }
-            )
-              .then((res) => res.json())
-              .then((data) => {
-                log(data.message, "success");
-              })
-              .catch((err) => {
-                log(err.message, "error");
-              });
-          } else {
-            log("Please login to save the file", "error");
-          }
-        }
-      }
-    } else if (Object.keys(timeAnalysiss).length > 0) {
-      for (const sample in timeAnalysiss) {
-        const timeSummary = timeAnalysiss[sample].summary;
-        saveTimeToTxt(timeSummary, `sample, ${sample}_Time_analysis`);
-        if (confirm("Do you want to save the file to the database?")) {
-          const urlParams = new URLSearchParams(window.location.search);
-          const id = urlParams.get("id");
-          const userId = document.cookie
-            ?.split("; ")
-            .find((row) => row.startsWith("ui_user_id="))
-            ?.split("=")[1];
-          const token = document.cookie
-            ?.split("; ")
-            .find((row) => row.startsWith("ui_Auth_x="))
-            ?.split("=")[1];
+    if (!hasGateAnalyses && !hasTimeAnalyses) {
+      log("No analysis data to save", "warning");
+      return;
+    }
 
-          if (id && userId && token) {
-            fetch(
-              `${apiUrl}/api/researcher/trials/${id}/testsResearcherTestUi`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                  channel: sample,
-                  commands: commandsTextArea.value,
-                  type: "time",
-                  measurements: parseTimeSummary(timeSummary),
-                  notes,
-                  settings: { gateV: vg, delay },
-                }),
-              }
-            )
-              .then((res) => res.json())
-              .then((data) => {
-                log(data.message, "success");
-              })
-              .catch((err) => {
-                log(err.message, "error");
-              });
-          } else {
-            log("Please login to save the file", "error");
-          }
-        }
-      }
+    const shouldSaveToDatabase = confirm(
+      "Do you want to save the file to the database?",
+    );
+    const saveContext = getSaveContext();
+
+    if (
+      shouldSaveToDatabase &&
+      !(saveContext.trialId && saveContext.userId && saveContext.token)
+    ) {
+      log("Please login to save the file", "error");
+      return;
+    }
+
+    if (hasGateAnalyses) {
+      await saveGateAnalyses(notes, shouldSaveToDatabase, saveContext);
+    } else if (hasTimeAnalyses) {
+      await saveTimeAnalyses(notes, shouldSaveToDatabase, saveContext);
     }
   }
 
-  function open_requirements_file() {
+  function openRequirementsFile() {
     window.open(
       "https://layerlogic.github.io/ui-v-2/requirements.txt",
-      "_blank"
+      "_blank",
     );
   }
 
+  renderStableSummary();
+  syncStableCaptureControls();
+
   saveDataButton.addEventListener("click", save);
-  infoCommandsButton.addEventListener("click", open_requirements_file);
+  infoCommandsButton.addEventListener("click", openRequirementsFile);
 });
