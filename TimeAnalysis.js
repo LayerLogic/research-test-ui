@@ -1,5 +1,7 @@
 import { log, parseResponse } from "./utils.js";
 
+const DEFAULT_BASELINE_WINDOW_POINTS = 5;
+
 export class TimeAnalysis {
   constructor(serialComm, sample, chart, vg, delay) {
     this.serialComm = serialComm;
@@ -10,12 +12,48 @@ export class TimeAnalysis {
     this.vg = vg;
     this.delay = delay;
     this.summary = [];
+    this.baseline = this.getDefaultBaseline();
+  }
+
+  getDefaultBaseline() {
+    return {
+      stableAtSeconds: null,
+      windowPoints: DEFAULT_BASELINE_WINDOW_POINTS,
+      x0: 1,
+      y0: 1,
+    };
+  }
+
+  getElapsedTimeSeconds(referenceTimestamp = Date.now()) {
+    return (referenceTimestamp - this.timestamp) / 1000;
+  }
+
+  captureBaseline(referenceTimestamp = Date.now(), windowPoints = DEFAULT_BASELINE_WINDOW_POINTS) {
+    const stableAtSeconds = this.getElapsedTimeSeconds(referenceTimestamp);
+    const eligibleSummary = this.summary.filter((point) => point.t <= stableAtSeconds);
+
+    if (!eligibleSummary.length) {
+      throw new Error(`Channel ${this.sample} has no measurements to use as a stable point yet`);
+    }
+
+    const baselineWindow = eligibleSummary.slice(-Math.max(1, windowPoints));
+    const x0 = baselineWindow.reduce((sum, point) => sum + point.X, 0) / baselineWindow.length;
+    const y0 = baselineWindow.reduce((sum, point) => sum + point.Y, 0) / baselineWindow.length;
+
+    this.baseline = {
+      stableAtSeconds,
+      windowPoints,
+      x0,
+      y0,
+    };
+
+    return this.baseline;
   }
 
   async setup() {
     try {
       const command = await this.serialComm.sendCommand(
-        `Vg, ${this.vg.toFixed(2)}`
+        `Vg, ${this.vg.toFixed(2)}`,
       );
       log(command, "Sent");
       const res = await this.serialComm.read();
@@ -36,12 +74,12 @@ export class TimeAnalysis {
       const commandRes = await this.serialComm.read();
       log(commandRes, "Received");
       const command = await this.serialComm.sendCommand(
-        `ACgn, ${this.vg.toFixed(2)}`
+        `ACgn, ${this.vg.toFixed(2)}`,
       );
       log(command, "sent");
       const res = await this.serialComm.read();
       log(res, "Received");
-      const elapsedTime = (Date.now() - this.timestamp) / 1000;
+      const elapsedTime = this.getElapsedTimeSeconds();
       const {
         resistance_left,
         resistance_right,
@@ -60,7 +98,7 @@ export class TimeAnalysis {
       this.updateChart(
         elapsedTime.toFixed(2),
         resistance_left,
-        resistance_right
+        resistance_right,
       );
     } catch (error) {
       log(`Time Analysis error: ${error}`, "error");

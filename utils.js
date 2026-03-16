@@ -23,50 +23,45 @@ function color(type) {
   }
 }
 
+const formatFileNumber = (value, digits = 6) =>
+  value.toFixed(digits).toString().replace(".", ",");
+
+const formatMetadataValue = (value) => {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return String(value).replace(".", ",");
+};
+
 export const saveGateToTxt = (data, file_name) => {
   if (data.length === 0) {
     log("No data to save!", "error");
     return;
   }
 
-  let textContent = "Vg (V)\t\tX (mV)\t\tY (mV)\t\tI (uA)\t\tf (Hz)\n"; // Headers with tab separation
+  let textContent = "Vg (V)\t\tX (mV)\t\tY (mV)\t\tI (uA)\t\tf (Hz)\n";
 
-  // Add data rows with proper formatting
-  for (let i = 0; i < data.length; i++) {
+  for (let i = 0; i < data.length; i += 1) {
     textContent += `${data[i]["Vg"]
       .toFixed(2)
       .toString()
-      .replace(".", ",")}\t\t${data[i]["X"]
-      .toFixed(6)
-      .toString()
-      .replace(".", ",")}\t\t${data[i]["Y"]
-      .toFixed(6)
-      .toString()
-      .replace(".", ",")}\t\t${data[i]["I"]
-      .toFixed(6)
-      .toString()
-      .replace(".", ",")}\t\t${data[i]["F"]
-      .toFixed(6)
-      .toString()
-      .replace(".", ",")}\n`;
+      .replace(".", ",")}\t\t${formatFileNumber(data[i]["X"])}\t\t${formatFileNumber(
+      data[i]["Y"],
+    )}\t\t${formatFileNumber(data[i]["I"])}\t\t${formatFileNumber(data[i]["F"])}\n`;
   }
 
-  // Create blob and download link
   const blob = new Blob([textContent], {
     type: "text/plain;charset=utf-8",
   });
   const link = document.createElement("a");
 
-  // Create filename with timestamp
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const filename = `${file_name}_${timestamp}.txt`;
 
-  // Trigger download
   if (window.navigator.msSaveOrOpenBlob) {
-    // For IE
     window.navigator.msSaveBlob(blob, filename);
   } else {
-    // For other browsers
     const url = window.URL.createObjectURL(blob);
     link.href = url;
     link.style.display = "none";
@@ -80,51 +75,47 @@ export const saveGateToTxt = (data, file_name) => {
   log(`Data saved as ${filename}`, "success");
 };
 
-export const saveTimeToTxt = (data, file_name) => {
+export const saveTimeToTxt = (data, file_name, metadata = {}) => {
   if (data.length === 0) {
     log("No data to save!", "error");
     return;
   }
 
-  // Create text content with consistent spacing
-  let textContent = "Time (s)\t\tX (mV)\t\tY (mV)\t\tI (uA)\t\tf (Hz)\n";
+  const baseline = metadata.baseline || {
+    stableAtSeconds: null,
+    windowPoints: 5,
+    x0: 1,
+    y0: 1,
+  };
 
-  // Add data rows with proper formatting
-  for (let i = 0; i < data.length; i++) {
+  let textContent = "";
+  textContent += `Analysis Run ID:\t${metadata.analysisRunId || ""}\n`;
+  textContent += `Stable At (s):\t${formatMetadataValue(baseline.stableAtSeconds)}\n`;
+  textContent += `X0:\t${formatMetadataValue(baseline.x0)}\n`;
+  textContent += `Y0:\t${formatMetadataValue(baseline.y0)}\n`;
+  textContent += `Window Points:\t${formatMetadataValue(baseline.windowPoints || 5)}\n\n`;
+  textContent += "Time (s)\t\tX (mV)\t\tY (mV)\t\tI (uA)\t\tf (Hz)\n";
+
+  for (let i = 0; i < data.length; i += 1) {
     textContent += `${data[i]["t"]
       .toFixed(2)
       .toString()
-      .replace(".", ",")}\t\t${data[i]["X"]
-      .toFixed(6)
-      .toString()
-      .replace(".", ",")}\t\t${data[i]["Y"]
-      .toFixed(6)
-      .toString()
-      .replace(".", ",")}\t\t${data[i]["I"]
-      .toFixed(6)
-      .toString()
-      .replace(".", ",")}\t\t${data[i]["F"]
-      .toFixed(6)
-      .toString()
-      .replace(".", ",")}\n`;
+      .replace(".", ",")}\t\t${formatFileNumber(data[i]["X"])}\t\t${formatFileNumber(
+      data[i]["Y"],
+    )}\t\t${formatFileNumber(data[i]["I"])}\t\t${formatFileNumber(data[i]["F"])}\n`;
   }
 
-  // Create blob and download link
   const blob = new Blob([textContent], {
     type: "text/plain;charset=utf-8",
   });
   const link = document.createElement("a");
 
-  // Create filename with timestamp
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const filename = `${file_name}_${timestamp}.txt`;
 
-  // Trigger download
   if (window.navigator.msSaveOrOpenBlob) {
-    // For IE
     window.navigator.msSaveBlob(blob, filename);
   } else {
-    // For other browsers
     const url = window.URL.createObjectURL(blob);
     link.href = url;
     link.style.display = "none";
@@ -136,6 +127,14 @@ export const saveTimeToTxt = (data, file_name) => {
   }
 
   log(`Data saved as ${filename}`, "success");
+};
+
+export const generateAnalysisRunId = () => {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+
+  return `run-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 };
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -167,7 +166,8 @@ export const parseGateSummary = (summary) => {
     log("No response recieved.", "warning");
     return;
   }
-  const parsedSummary = summary.map((item) => {
+
+  return summary.map((item) => {
     const { Vg, X, Y, I, F } = item;
     return {
       gateV: Vg,
@@ -177,8 +177,6 @@ export const parseGateSummary = (summary) => {
       frequency: F,
     };
   });
-
-  return parsedSummary;
 };
 
 export const parseTimeSummary = (summary) => {
@@ -186,7 +184,8 @@ export const parseTimeSummary = (summary) => {
     log("No response recieved.", "warning");
     return;
   }
-  const parsedSummary = summary.map((item) => {
+
+  return summary.map((item) => {
     const { t, X, Y, I, F } = item;
     return {
       time: t,
@@ -196,6 +195,4 @@ export const parseTimeSummary = (summary) => {
       frequency: F,
     };
   });
-
-  return parsedSummary;
 };

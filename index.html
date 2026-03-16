@@ -107,7 +107,11 @@ ACset, 0.5, 200, 3, 500</textarea
           <button id="resetZoomButton" class="secondary">Reset zoom</button>
           <button id="toggleGrid">Single Column</button>
           <button id="saveDataButton">Save</button>
+          <button id="markStableButton" class="secondary">Mark Stable Now</button>
           <button id="stopButton" class="secondary danger">Stop</button>
+        </div>
+        <div id="stableStatus" class="stable-status">
+          <p>No stable point captured yet.</p>
         </div>
         <div class="notes-container">
           <label for="testNotes">Test Notes:</label>
@@ -371,6 +375,32 @@ ACset, 0.5, 200, 3, 500</textarea
       background-color: #4caf50 !important;
       color: #f5f5f5 !important;
     }
+    .stable-status {
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 12px;
+      background-color: #f8f8f8;
+      font-size: 12px;
+      min-height: 72px;
+    }
+
+    .stable-status p {
+      margin: 0;
+    }
+
+    .stable-status-row {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 8px 0;
+      border-top: 1px solid #ddd;
+    }
+
+    .stable-status-row:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+
     .notes-container {
       display: flex;
       flex-direction: column;
