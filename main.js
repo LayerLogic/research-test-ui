@@ -47,8 +47,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (res.status === 200) {
       const data = await res.json();
       if (data.user) {
-        document.cookie = `ui_Auth_x=${data.user.token}; path=/; max-age=43200; secure; SameSite=None`;
-        document.cookie = `ui_user_id=${data.user.id}; path=/; max-age=43200; secure; SameSite=None`;
+        document.cookie = `ui_Auth_x=${data.user.token}; path=/; max-age=43200; Secure; SameSite=Strict`;
+        document.cookie = `ui_user_id=${data.user.id}; path=/; max-age=43200; Secure; SameSite=Strict`;
         loginOverlay.style.display = "none";
       } else {
         log("Login failed", "error");
@@ -105,6 +105,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   const markStableButton = document.getElementById("markStableButton");
   const stableStatus = document.getElementById("stableStatus");
   const channels = document.getElementById("channels").children;
+
+  sendCommandsButton.disabled = true;
+  startGateAnalysisButton.disabled = true;
+  startTimeAnalysisButton.disabled = true;
 
   let isRunning = false;
   const gateAnalysiss = {};
@@ -402,12 +406,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     renderStableSummary();
     syncStableCaptureControls();
 
+    document.getElementById("chart-container").replaceChildren();
+
     for (const sample of channelsArr) {
       const canvas = document.createElement("canvas");
       canvas.id = sample;
       canvas.style.border = "1px solid #ddd";
-      const container = document.getElementById("chart-container");
-      container.appendChild(canvas);
+      document.getElementById("chart-container").appendChild(canvas);
       const ctx = canvas.getContext("2d");
       const gateChart = new Chart(ctx, gateChartConfig(sample));
 
@@ -454,12 +459,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     currentAnalysisType = "time";
     renderStableSummary();
 
+    document.getElementById("chart-container").replaceChildren();
+
     for (const sample of channelsArr) {
       const canvas = document.createElement("canvas");
       canvas.id = sample;
       canvas.style.border = "1px solid #ddd";
-      const container = document.getElementById("chart-container");
-      container.appendChild(canvas);
+      document.getElementById("chart-container").appendChild(canvas);
       const ctx = canvas.getContext("2d");
       const timeChart = new Chart(ctx, timeChartConfig(sample));
       timeAnalysiss[sample] = new TimeAnalysis(
@@ -474,20 +480,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     startGateAnalysisButton.disabled = true;
     startTimeAnalysisButton.disabled = true;
 
+    for (const sample of channelsArr) {
+      await timeAnalysiss[sample].setup();
+    }
+
     let index = 0;
-    let setup = false;
     isRunning = true;
     syncStableCaptureControls();
 
     while (isRunning) {
       const currentIdx = index % channelsArr.length;
       const channelName = channelsArr[currentIdx];
-      const timeAnalysis = timeAnalysiss[channelName];
-      if (!setup) {
-        await timeAnalysis.setup();
-        setup = true;
-      }
-      await timeAnalysis.run();
+      await timeAnalysiss[channelName].run();
       index += 1;
     }
   });
@@ -509,6 +513,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       log(res, "info");
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
+
+    startGateAnalysisButton.disabled = false;
+    startTimeAnalysisButton.disabled = false;
   });
 
   stepSizeInput.addEventListener("input", async (e) => {
@@ -548,7 +555,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   delayInput.addEventListener("input", async (e) => {
-    delay = parseFloat(e.target.value);
+    delay = parseFloat(e.target.value) || 0;
     await sleep(500);
     for (const sample in timeAnalysiss) {
       timeAnalysiss[sample].delay = delay;
@@ -572,6 +579,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       channelsArr.splice(index, 1);
       channel.className = channel.className.replace(" pressed", "");
     }
+    sendCommandsButton.disabled = channelsArr.length === 0;
   }
 
   async function save() {

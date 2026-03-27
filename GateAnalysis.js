@@ -44,14 +44,15 @@ export class GateAnalysis {
         F: frequency,
       });
       this.updateChart(this.vg, resistance_left, resistance_right);
+      const precision = 1e6;
       if (this.isIncreasing) {
-        this.vg += this.vg_step;
+        this.vg = Math.round((this.vg + this.vg_step) * precision) / precision;
         if (this.vg >= this.vg_max) {
           this.isIncreasing = false;
           this.vg = this.vg_max;
         }
       } else {
-        this.vg -= this.vg_step;
+        this.vg = Math.round((this.vg - this.vg_step) * precision) / precision;
         if (this.vg <= this.vg_min) {
           this.isIncreasing = true;
           this.vg = this.vg_min;
